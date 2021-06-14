@@ -187,7 +187,7 @@ def main(argv):
     for opt, arg in opts:
         if opt in ("-h", "--help"):
             print_help(True)
-            sys.exit()
+            sys.exit(0)
         elif opt in ("-c", "--compress"):
             operation = encode
         elif opt in ("-d", "--decompress"):
@@ -258,6 +258,8 @@ def main(argv):
         elif operation == decode:
             print("Ha habido un error durante la descompresión")
 
+    input_stream.close()
+    output_stream.close()
 
 if __name__ == "__main__":
     main(sys.argv[1:])
