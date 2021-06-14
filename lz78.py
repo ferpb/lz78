@@ -177,7 +177,7 @@ def main(argv):
 
     try:
         # No se usan opciones largas
-        opts, _ = getopt.getopt(
+        opts, trail_args = getopt.getopt(
             argv, "hcdf:o:", ["help", "compress", "decompress", "file=", "out="])
         # opts, args = getopt.getopt(argv,"cxf:o:",[])
     except getopt.GetoptError:
@@ -197,9 +197,9 @@ def main(argv):
         elif opt in ("-o", "--output"):
             output_file = arg
 
-    if not operation:
+    if not operation or trail_args:
         print_help(False)
-        exit(1)
+        sys.exit(2)
 
     # # print(opts, args)
     # print("input:", input_file)
@@ -219,15 +219,15 @@ def main(argv):
                 extension = os.path.splitext(input_file)[1]
                 if extension != ".lz":
                     print("El fichero de entrada no tiene extensión .lz")
-                    exit(1)
+                    sys.exit(1)
             input_stream = open(input_file, "rb")
     except IOError:
         print("No se ha podido abrir la entrada")
-        exit(1)
+        sys.exit(1)
 
     try:
         # Salida
-        if input_file != '' and output_file == '':
+        if input_file != '' and input_file != '-' and output_file == '':
             if operation == encode:
                 # Concatenar al fichero de entrada .lz
                 output_stream = open(input_file + ".lz", "wb")
@@ -247,7 +247,7 @@ def main(argv):
             output_stream = os.fdopen(sys.stdout.fileno(), "wb", closefd=False)
     except IOError:
         print("No se ha podido abrir la salida")
-        exit(1)
+        sys.exit(1)
 
     # Ejecutar la operación
     try:
