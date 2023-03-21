@@ -1,4 +1,4 @@
-#!/usr/local/bin/python3
+#!/usr/bin/env python3
 
 # Implementación básica del algoritmo de compresión LZ78
 # Fernando Peña Bes
@@ -11,26 +11,25 @@ import math
 
 from bitarray import bitarray
 
-
 # Codifica mediante el algoritmo LZ78 todos los bytes que hay en <stream>
 # y los escribe en <out>
 def encode(stream, out):
-    # La compresión se va a conseguir reemplazando ocurrencias
-    # repetidas con referencias a un diccionario, construido en base a la entrada.
+    # La compresión consigue reemplazando ocurrencias repetidas
+    # con referencias a un diccionario, que se construye conforme
+    # se lee la entrada
 
     # Cada entrada del diccionario es de la forma
-    # dictionary[...] = {index, character}
-    #   index es un índice a una entrada previa del diccionario, y characters se concatena
-    #   a la candena representada por dictionary[index]
+    #   dictionary[(index, byte)] = n
+    # El valor 'n' es el índice de la entrada, 'index' es un índice a una
+    # entrada previa del diccionario (index < n), y 'byte' es un byte que se
+    # concatena el prefijo representado (recursivamente) por la entrada previa
+    # para obtener la cadena correspondiente a la entrada actual.
 
     dictionary = dict()
-    compressed = []
 
     # El índice 0 indica el prefijo vacío
     last_matching_index = 0
     next_available_index = 1
-
-    is_last_valid = True
 
     while True:
         # leer un byte
@@ -39,100 +38,86 @@ def encode(stream, out):
         # Si la entrada ha terminado, el algoritmo para
         if not byte:
             if last_matching_index != 0:
-                # Si la porción de la entrada es igual que una de las frases que ya se han encontrado,
-                # sólo interesa el <last_matching_index> a la hora de descomprimir.
-
-                # Se marca que el último byte del fichero comprimido no será válido
-                is_last_valid = False
-                # Como último byte se escribe el byte nulo
-                compressed.append((last_matching_index, b'\x00'))
+                # Si el último byte ha hecho match con una entrada
+                # del diccionario, se deja el campo del byte vacío
+                dictionary[(last_matching_index, None)] = next_available_index
             break
 
-        # Para cada caracter, se busca un match en el dicionario
-        # de la forma {last matching index, character}
-
+        # Para cada carácter que leemos, se busca un match en el dicionario de
+        # la forma '(last matching index, byte)'
         if (last_matching_index, byte) in dictionary:
-            # Si se encuentra un match, last_matching_index se le asigna el índice de la entrada
+            # Si se encuentra un match, se asigna a 'last_matching_index' el índice de esa entrada
             last_matching_index = dictionary[(last_matching_index, byte)]
         else:
-            # Si no se encuentra un match, se crea una nueva entrada en el diccionario
-            #   dictionary[next_available_index] = {last_matching_index, character}
-            # y el algorimo imprime last_matching_index seguido por character,
-            # resetea last_matching_index a 0 e incrementa next_available_index.
+            # Si no, se crea una nueva entrada, se resetea 'last_matching_index'
+            # e incrementa 'next_available_index'
             dictionary[(last_matching_index, byte)] = next_available_index
-            compressed.append((last_matching_index, byte))
             last_matching_index = 0
             next_available_index += 1
 
-    # Crear array de bits
+    # Crear array de bits a partir del diccionario
     a = bitarray()
-    # El primer bit del fichero comprimido indica si el último byte es válido
-    a.append(is_last_valid)
 
-    # Escribir cada pareja (i, s) en el array de bits
-    n_phrase = 1
-    for (i, s) in compressed:
+    # Se asume que el diccionario mantiene el orden de inserción
+    for n_phrase, (i, s) in enumerate(dictionary.keys(), start=1):
+        # Añadir número con el mínimo número de bits posible
         number_size = math.ceil(math.log(n_phrase, 2))
-
-        # No pasa nada por que log(1) sea cero en zfill
         num = bin(i)[2:].zfill(number_size)
-        a.extend(num)
-        a.frombytes(s)
-        n_phrase += 1
+        if n_phrase != 1:
+            a.extend(num)
+        # Añadir byte
+        if s != None:
+            a.frombytes(s)
 
-    # Escribir el array de bits en la salida
+    # Añadir padding de ceros para que la longitud del bitarray sea múltiplo de 8
+    a.fill()
+
+    # Escribir el bitarray en la salida
     a.tofile(out)
 
-    return compressed
 
-
-# Decodificar mediante el algoritmo LZ78 todos los bytes que hay en <stream>
+# Decodifica mediante el algoritmo LZ78 los bytes leídos de <stream>
 # y los escribe en <out>
 def decode(stream, out):
-    # Leer fichero
-
+    # Leer entrada
     phrases = dict()
     a = bitarray()
     a.fromfile(stream)
 
-    num_frase = 1
     number_size = 1
-
-    is_last_valid = a[0]
-
-    pointer = 1
-
+    pointer = 0
     iteration = 1
 
-    while pointer + number_size + 8 < len(a):
-        i = a[pointer:pointer + number_size].to01()
+    while pointer + number_size - 1 < len(a):
+        if iteration == 1:
+            i = 0
+        else:
+            # Leer número
+            i = a[pointer:pointer + number_size].to01()
+            i = int(i, 2)
+            pointer += number_size
 
-        i = int(i, 2)
-
-        pointer += number_size
+        # Intentar leer byte
+        if i != 0 and pointer + 8 > len(a):
+            # Caso en el que no hay byte en la última pareja
+            out.write(phrases[i])
+            break
 
         s = a[pointer:pointer+8].tobytes()
-
         pointer += 8
 
-        # No pasa nada por que log(1) sea cero en zfill
-        # Pero aquí no se llega a invocar a log(1)
-        num_frase += 1
-        number_size = math.ceil(math.log(num_frase, 2))
-
         if i != 0:
-            # buscar en el diccionario
-            s2 = phrases[i]
+            # Buscar la frase en el diccionario
+            p = phrases[i] + s
+        else:
+            p = s
 
-            if pointer + 8 >= len(a) and not is_last_valid:
-                # si estoy al final y no hay que escribir el último byte
-                s = s2
-            else:
-                s = s2 + s
+        phrases[iteration] = p
 
-        phrases[iteration] = s
-        out.write(s)
         iteration += 1
+        number_size = math.ceil(math.log(iteration, 2))
+
+        out.write(p)
 
 
 def print_help(full):
@@ -176,10 +161,8 @@ def main(argv):
     operation = None
 
     try:
-        # No se usan opciones largas
         opts, trail_args = getopt.getopt(
             argv, "hcdf:o:", ["help", "compress", "decompress", "file=", "out="])
-        # opts, args = getopt.getopt(argv,"cxf:o:",[])
     except getopt.GetoptError:
         print_help(False)
         sys.exit(2)
@@ -201,15 +184,11 @@ def main(argv):
         print_help(False)
         sys.exit(2)
 
-    # # print(opts, args)
-    # print("input:", input_file)
-    # print("output:", output_file)
-    # print("operation:", operation)
 
     # Procesar ficheros de entrada y salida
 
+    # Entrada
     try:
-        # Entrada
         if input_file == '' or input_file == '-':
             # Usar entrada estándar
             input_stream = os.fdopen(sys.stdin.fileno(), "rb", closefd=False)
@@ -225,8 +204,8 @@ def main(argv):
         print("No se ha podido abrir la entrada")
         sys.exit(1)
 
+    # Salida
     try:
-        # Salida
         if input_file != '' and input_file != '-' and output_file == '':
             if operation == encode:
                 # Concatenar al fichero de entrada .lz
@@ -252,7 +231,7 @@ def main(argv):
     # Ejecutar la operación
     try:
         operation(input_stream, output_stream)
-    except:
+    except Exception as e:
         if operation == encode:
             print("Ha habido un error durante la compresión")
         elif operation == decode:

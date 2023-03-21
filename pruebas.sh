@@ -14,7 +14,13 @@ imprimirCompresion() {
     echo "Compresor: $1"
     echo "    Tamaño comprimido: $3"
     # división decimal usando bc
-    echo "    Factor Compresión:" $(echo "scale=4; $3/$2" | bc)
+    echo "    Factor compresión:" $(echo "scale=4; $3/$2" | bc)
+}
+
+tiempo() {
+    TIMEFORMAT=%R
+    echo -n "Tiempo: "
+    time "$@"
 }
 
 for file in $dirPruebas/*
@@ -25,7 +31,7 @@ do
     echo "Tamaño sin comprimir: $sizeAntes"
 
     # lz78
-    time ./lz78.py -c -f $file
+    tiempo ./lz78.py -c -f $file
     sizeDespues=$(obtenerSize $file.lz)
 
     # Comprobar que el algoritmo implementado funciona bien
@@ -40,16 +46,15 @@ do
     imprimirCompresion "LZ78" $sizeAntes $sizeDespues
 
     # gzip
-    time gzip $file
+    tiempo gzip $file
     sizeDespues=$(obtenerSize $file.gz)
     gunzip $file.gz
     imprimirCompresion "gzip" $sizeAntes $sizeDespues
 
     # bzip2
-    time bzip2 $file
+    tiempo bzip2 $file
     sizeDespues=$(obtenerSize $file.bz2)
     bunzip2 $file.bz2
-
     imprimirCompresion "bzip2" $sizeAntes $sizeDespues
 
     echo
